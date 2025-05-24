@@ -4,7 +4,7 @@ import type React from "react"
 
 import { useState, useRef, useEffect } from "react"
 import Link from "next/link"
-import { ArrowLeft, Bot, Coins, Loader2, Maximize2, Minimize2, Plus, Send, Settings, Sparkles, Trash, Pencil } from "lucide-react"
+import { ArrowLeft, Bot, Coins, Loader2, Maximize2, Minimize2, Plus, Send, Settings, Sparkles, Trash, Pencil, Image as ImageIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -31,6 +31,8 @@ export default function Dashboard() {
   const [isGenerating, setIsGenerating] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [selectedImage, setSelectedImage] = useState<File | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   // Always use Gemini model as requested
   const selectedModel = "gemini"
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -293,12 +295,45 @@ export default function Dashboard() {
     }
   }
 
+  const handleImageUpload = async (file: File) => {
+    if (!file) return
+
+    // Create a temporary URL for the image
+    const imageUrl = URL.createObjectURL(file)
+    setSelectedImage(file)
+
+    // Find the current chat
+    const currentChatIndex = chats.findIndex((chat) => chat.id === activeChat)
+    if (currentChatIndex === -1) return
+
+    // Create a copy of the chats array
+    const updatedChats = [...chats]
+
+    // Add the user message with image to the UI immediately
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      role: "user",
+      content: "Sent an image",
+    }
+
+    updatedChats[currentChatIndex].messages.push(userMessage)
+    setChats([...updatedChats])
+
+    // Here you would typically upload the image to your server/storage
+    // and get back a permanent URL. For now, we'll just use the temporary URL
+    // TODO: Implement actual image upload to server/storage
+  }
+
+  const handleImageClick = () => {
+    fileInputRef.current?.click()
+  }
+
   const currentChat = chats.find((chat) => chat.id === activeChat)
 
   return (
     <SidebarProvider>
-      <div className="flex h-screen bg-black text-white">
-        <Sidebar className="border-r border-gray-800 bg-gray-950">
+      <div className="flex h-screen w-screen bg-black text-white">
+        <Sidebar className="border-r border-gray-800 bg-gray-950" style={{ minWidth: '16rem', maxWidth: '16rem' }}>
           <SidebarHeader className="p-3">
             <Button
               onClick={handleNewChat}
@@ -366,8 +401,8 @@ export default function Dashboard() {
 
         <main
           className={cn(
-            "relative flex flex-1 flex-col bg-gradient-to-b from-gray-900 to-black transition-all duration-300",
-            isFullscreen ? "fixed inset-0 z-50" : "",
+            "relative flex flex-1 flex-col bg-gradient-to-b from-gray-900 to-black transition-all duration-300 min-w-0 w-0",
+            isFullscreen ? "fixed inset-0 z-50" : ""
           )}
         >
           {/* Header */}
@@ -393,7 +428,7 @@ export default function Dashboard() {
           </header>
 
           {/* Main chat area */}
-          <div className="flex-1 overflow-y-auto p-4 md:px-20 lg:px-32">
+          <div className="flex-1 overflow-y-auto p-4">
             {isLoading ? (
               <div className="flex h-full items-center justify-center">
                 <Loader2 className="h-8 w-8 animate-spin text-emerald-500" />
@@ -475,7 +510,7 @@ export default function Dashboard() {
                 <p className="mb-8 text-center text-gray-400">
                   Ask about yield strategies, token analysis, or market trends
                 </p>
-                <div className="grid w-full max-w-md gap-3 md:grid-cols-2">
+                <div className="grid w-full gap-3 md:grid-cols-2">
                   {[
                     "Compare ETH staking options",
                     "Analyze AAVE vs Compound",
@@ -502,8 +537,28 @@ export default function Dashboard() {
           </div>
 
           {/* Input area */}
-          <div className="border-t border-gray-800 p-4 md:px-20 lg:px-32">
-            <div className="mx-auto flex max-w-4xl items-end gap-2 rounded-lg border border-gray-800 bg-gray-900 p-2">
+          <div className="border-t border-gray-800 p-4">
+            <div className="flex items-end gap-2 rounded-lg border border-gray-800 bg-gray-900 p-2 w-full">
+              <input
+                type="file"
+                ref={fileInputRef}
+                className="hidden"
+                accept="image/*"
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (file) {
+                    handleImageUpload(file)
+                  }
+                }}
+              />
+              <Button
+                onClick={handleImageClick}
+                size="icon"
+                variant="ghost"
+                className="h-10 w-10 shrink-0 rounded-md text-gray-400 hover:text-white hover:bg-gray-800"
+              >
+                <ImageIcon className="h-5 w-5" />
+              </Button>
               <Textarea
                 ref={textareaRef}
                 value={input}
