@@ -6,7 +6,7 @@ export async function GET(req: NextRequest) {
   try {
     try {
       // Try to get chats from database
-      const chats = await prisma.chat.findMany({
+      let chats = await prisma.chat.findMany({
         include: {
           messages: true,
         },
@@ -15,6 +15,22 @@ export async function GET(req: NextRequest) {
         },
       });
       
+      // If no chats, insert the welcome chat
+      if (chats.length === 0) {
+        const welcomeChat = await prisma.chat.create({
+          data: {
+            title: 'Welcome to DeFi Copilot',
+            messages: {
+              create: [{
+                question: 'What can DeFi Copilot help me with?',
+                answer: 'I can help you with DeFi strategies, token analysis, market trends, and more. Feel free to ask me anything about decentralized finance!',
+              }],
+            },
+          },
+          include: { messages: true },
+        });
+        chats = [welcomeChat];
+      }
       // If we successfully retrieved chats from the database, return them
       return NextResponse.json(chats);
     } catch (dbError) {
