@@ -31,7 +31,7 @@ export default function Dashboard() {
   const [isGenerating, setIsGenerating] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
-  const [selectedImage, setSelectedImage] = useState<File | null>(null)
+  const [selectedImages, setSelectedImages] = useState<File[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
   // Always use Gemini model as requested
   const selectedModel = "gemini"
@@ -97,72 +97,48 @@ export default function Dashboard() {
 
   const handleSendMessage = async () => {
     if (!input.trim()) return
-
-    // Find the current chat
     const currentChatIndex = chats.findIndex((chat) => chat.id === activeChat)
     if (currentChatIndex === -1) return
-
-    // Create a copy of the chats array
     const updatedChats = [...chats]
-
-    // Add the user message to the UI immediately
+    // Only add the user message (no imageUrl)
     const userMessage: Message = {
       id: Date.now().toString(),
       role: "user",
       content: input,
     }
-
     updatedChats[currentChatIndex].messages.push(userMessage)
-
-    // Update the chat title if it's the first message
     if (updatedChats[currentChatIndex].messages.length === 1) {
       const newTitle = input.slice(0, 30) + (input.length > 30 ? "..." : "")
       updatedChats[currentChatIndex].title = newTitle
-      
-      // Update the chat title in the database
       try {
-        // Make sure we have a valid chatId before attempting to rename
         if (activeChat && typeof activeChat === 'string' && activeChat.trim() !== '') {
-          console.log('Updating chat title for chat ID:', activeChat);
           await api.renameChat(activeChat, newTitle);
-        } else {
-          console.error('Cannot update chat title: activeChat is undefined or invalid');
         }
       } catch (error) {
         console.error('Error updating chat title:', error)
       }
     }
-
-    // Update UI with user message
     setChats([...updatedChats])
     setInput("")
-
-    // Send message to API
+    setSelectedImages([]) // Clear images after sending
     setIsGenerating(true)
     try {
       // Send message to the API and get response
-      const messageResponse = await api.sendMessage(activeChat, input)
-      
-      // Create assistant message from response
+      const messageResponse = await api.sendMessage(activeChat, input, selectedImages)
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
         content: messageResponse.answer,
       }
-
-      // Update the chat with the assistant's response
       updatedChats[currentChatIndex].messages.push(assistantMessage)
       setChats([...updatedChats])
     } catch (error) {
       console.error('Error sending message:', error)
-      
-      // Add error message to UI
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
         content: "Sorry, there was an error processing your request. Please try again later.",
       }
-      
       updatedChats[currentChatIndex].messages.push(errorMessage)
       setChats([...updatedChats])
     } finally {
@@ -293,35 +269,6 @@ export default function Dashboard() {
     } finally {
       setIsLoading(false)
     }
-  }
-
-  const handleImageUpload = async (file: File) => {
-    if (!file) return
-
-    // Create a temporary URL for the image
-    const imageUrl = URL.createObjectURL(file)
-    setSelectedImage(file)
-
-    // Find the current chat
-    const currentChatIndex = chats.findIndex((chat) => chat.id === activeChat)
-    if (currentChatIndex === -1) return
-
-    // Create a copy of the chats array
-    const updatedChats = [...chats]
-
-    // Add the user message with image to the UI immediately
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      role: "user",
-      content: "Sent an image",
-    }
-
-    updatedChats[currentChatIndex].messages.push(userMessage)
-    setChats([...updatedChats])
-
-    // Here you would typically upload the image to your server/storage
-    // and get back a permanent URL. For now, we'll just use the temporary URL
-    // TODO: Implement actual image upload to server/storage
   }
 
   const handleImageClick = () => {
@@ -510,7 +457,7 @@ export default function Dashboard() {
                 <p className="mb-8 text-center text-gray-400">
                   Ask about yield strategies, token analysis, or market trends
                 </p>
-                <div className="grid w-full gap-3 md:grid-cols-2">
+                <div className="grid w-full gap-2 md:grid-cols-2">
                   {[
                     "Compare ETH staking options",
                     "Analyze AAVE vs Compound",
@@ -520,7 +467,7 @@ export default function Dashboard() {
                     <Button
                       key={i}
                       variant="outline"
-                      className="justify-start border-gray-800 bg-gray-900/50 text-left hover:bg-gray-800"
+                      className="justify-start border-gray-800 bg-gray-900/50 text-left hover:bg-gray-800 px-3 py-2 text-sm h-9 min-h-0"
                       onClick={() => {
                         setInput(suggestion)
                         if (textareaRef.current) {
@@ -536,6 +483,31 @@ export default function Dashboard() {
             )}
           </div>
 
+          {/* Image context preview */}
+          {selectedImages.length > 0 && (
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
+              {selectedImages.map((img, idx) => (
+                <div key={img.name + img.size} className="relative group">
+                  <img
+                    src={URL.createObjectURL(img)}
+                    alt={`Selected context ${idx + 1}`}
+                    className="h-16 w-16 object-cover rounded border border-gray-700"
+                  />
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="absolute -top-2 -right-2 text-gray-400 hover:text-white bg-black/70"
+                    onClick={() => setSelectedImages(selectedImages.filter((_, i) => i !== idx))}
+                    aria-label="Remove image"
+                  >
+                    <Trash className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+              <span className="text-xs text-gray-400 ml-2">Images will be used as context for your next message</span>
+            </div>
+          )}
+
           {/* Input area */}
           <div className="border-t border-gray-800 p-4">
             <div className="flex items-end gap-2 rounded-lg border border-gray-800 bg-gray-900 p-2 w-full">
@@ -544,11 +516,14 @@ export default function Dashboard() {
                 ref={fileInputRef}
                 className="hidden"
                 accept="image/*"
+                multiple
                 onChange={(e) => {
-                  const file = e.target.files?.[0]
-                  if (file) {
-                    handleImageUpload(file)
-                  }
+                  const files = Array.from(e.target.files || [])
+                  setSelectedImages((prev) => {
+                    // Avoid duplicates by name+size
+                    const existing = new Set(prev.map(f => f.name + f.size))
+                    return [...prev, ...files.filter(f => !existing.has(f.name + f.size))]
+                  })
                 }}
               />
               <Button

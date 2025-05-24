@@ -101,15 +101,31 @@ export const useApi = () => {
   };
 
   // Send a message and get a response
-  const sendMessage = async (chatId: string, question: string): Promise<{ question: string; answer: string }> => {
+  const sendMessage = async (
+    chatId: string,
+    question: string,
+    images?: File[]
+  ): Promise<{ question: string; answer: string }> => {
     try {
-      const response = await fetch(`/api/chats/${chatId}/messages`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ question, model: 'gemini' }),
-      });
+      let response;
+      if (images && images.length > 0) {
+        const formData = new FormData();
+        formData.append('question', question);
+        formData.append('model', 'gemini');
+        images.forEach((img) => formData.append('images[]', img));
+        response = await fetch(`/api/chats/${chatId}/messages`, {
+          method: 'POST',
+          body: formData,
+        });
+      } else {
+        response = await fetch(`/api/chats/${chatId}/messages`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ question, model: 'gemini' }),
+        });
+      }
 
       if (!response.ok) {
         throw new Error(`API error: ${response.statusText}`);
